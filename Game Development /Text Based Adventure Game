@@ -1,1 +1,477 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Sword, Package, Map, RotateCcw, Save, BookOpen, Heart } from 'lucide-react';
 
+export default function TextAdventureGame() {
+  const [gameState, setGameState] = useState({
+    currentScene: 'start',
+    inventory: [],
+    health: 100,
+    gold: 0,
+    flags: {},
+    history: []
+  });
+  const [inputValue, setInputValue] = useState('');
+  const historyEndRef = useRef(null);
+
+  useEffect(() => {
+    loadGame();
+  }, []);
+
+  useEffect(() => {
+    historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [gameState.history]);
+
+  const scenes = {
+    start: {
+      text: "You wake up in a dimly lit tavern. The smell of ale and old wood fills the air. A mysterious hooded figure sits in the corner, and the bartender is cleaning glasses behind the counter. There's a door leading outside to the north.",
+      image: "🏰",
+      choices: [
+        { text: "Talk to the hooded figure", next: "hooded_figure" },
+        { text: "Speak with the bartender", next: "bartender" },
+        { text: "Go outside", next: "town_square" },
+        { text: "Check your pockets", action: "check_pockets" }
+      ]
+    },
+    hooded_figure: {
+      text: "The hooded figure looks up, revealing piercing green eyes. 'Ah, you're finally awake. I have a quest for you, if you're brave enough. Deep in the Darkwood Forest lies an ancient artifact. Retrieve it, and I'll reward you handsomely.'",
+      image: "🧙",
+      choices: [
+        { text: "Accept the quest", action: "accept_quest", next: "town_square" },
+        { text: "Decline politely", next: "start" },
+        { text: "Ask about the artifact", next: "artifact_info" }
+      ]
+    },
+    artifact_info: {
+      text: "The figure leans closer. 'The Crystal of Eternity. It's said to grant immense power to its wielder. But beware - the forest is treacherous, and many have perished seeking it.'",
+      image: "💎",
+      choices: [
+        { text: "Accept the quest", action: "accept_quest", next: "town_square" },
+        { text: "This sounds too dangerous", next: "start" }
+      ]
+    },
+    bartender: {
+      text: "The bartender, a stout man with a thick beard, greets you warmly. 'Welcome, traveler! Can I get you something? Or perhaps you're looking for work? I could use help clearing rats from my cellar.'",
+      image: "🍺",
+      choices: [
+        { text: "Accept the rat quest", action: "accept_rat_quest", next: "cellar" },
+        { text: "Buy a health potion (10 gold)", action: "buy_potion", requirement: "gold >= 10" },
+        { text: "Just browsing", next: "start" }
+      ]
+    },
+    cellar: {
+      text: "You descend into the dark cellar. The sound of squeaking fills the air. Three giant rats emerge from the shadows, their eyes glowing red!",
+      image: "🐀",
+      choices: [
+        { text: "Fight the rats", next: "fight_rats" },
+        { text: "Run back upstairs", next: "start" },
+        { text: "Use a health potion", action: "use_potion", requirement: "has_item:health_potion" }
+      ]
+    },
+    fight_rats: {
+      text: "You engage in fierce combat with the rats! After a grueling battle, you emerge victorious but wounded. You find 15 gold pieces among the debris.",
+      image: "⚔️",
+      choices: [
+        { text: "Return to the bartender", action: "complete_rat_quest", next: "bartender_reward" }
+      ]
+    },
+    bartender_reward: {
+      text: "The bartender is impressed! 'Excellent work! Here's 25 gold as promised, plus a rusty sword I found down there years ago. It's not much, but it's better than nothing.'",
+      image: "🗡️",
+      choices: [
+        { text: "Thank him and continue", action: "get_sword", next: "town_square" }
+      ]
+    },
+    town_square: {
+      text: "You stand in the bustling town square. Market stalls line the streets, and townsfolk go about their business. To the north lies the Darkwood Forest, dark and foreboding. East leads to the marketplace, and the tavern is south.",
+      image: "🏛️",
+      choices: [
+        { text: "Enter Darkwood Forest", next: "forest_entrance", requirement: "flag:quest_accepted" },
+        { text: "Visit the marketplace", next: "marketplace" },
+        { text: "Return to tavern", next: "start" },
+        { text: "Rest on a bench", action: "rest" }
+      ]
+    },
+    marketplace: {
+      text: "The marketplace is alive with activity. A merchant with exotic goods catches your eye. He's selling armor (50 gold) and better weapons (75 gold).",
+      image: "🏪",
+      choices: [
+        { text: "Buy armor (50 gold)", action: "buy_armor", requirement: "gold >= 50" },
+        { text: "Buy weapon (75 gold)", action: "buy_weapon", requirement: "gold >= 75" },
+        { text: "Browse and leave", next: "town_square" }
+      ]
+    },
+    forest_entrance: {
+      text: "You enter the Darkwood Forest. The trees are thick and twisted, blocking out most sunlight. You hear strange sounds in the distance. A path splits into two directions - one marked with strange runes, the other completely overgrown.",
+      image: "🌲",
+      choices: [
+        { text: "Take the rune-marked path", next: "rune_path" },
+        { text: "Brave the overgrown path", next: "overgrown_path" },
+        { text: "Turn back", next: "town_square" }
+      ]
+    },
+    rune_path: {
+      text: "Following the runes, you come to a clearing with an ancient stone altar. On it rests a glowing crystal - the Crystal of Eternity! But a massive forest guardian blocks your path.",
+      image: "👹",
+      choices: [
+        { text: "Fight the guardian", next: "guardian_fight" },
+        { text: "Try to negotiate", next: "guardian_talk" },
+        { text: "Retreat", next: "forest_entrance" }
+      ]
+    },
+    guardian_fight: {
+      text: "The battle is intense! The guardian is powerful, but with determination (and hopefully good equipment), you manage to defeat it. The crystal is yours!",
+      image: "💎",
+      choices: [
+        { text: "Take the crystal and return", action: "get_crystal", next: "victory" }
+      ]
+    },
+    guardian_talk: {
+      text: "The guardian speaks in a deep voice: 'Many have tried to take the crystal by force. You show wisdom. Answer my riddle, and the crystal is yours: I speak without a mouth and hear without ears. I have no body, but come alive with wind. What am I?'",
+      image: "❓",
+      choices: [
+        { text: "An echo", next: "riddle_correct" },
+        { text: "The wind", next: "riddle_wrong" },
+        { text: "A spirit", next: "riddle_wrong" }
+      ]
+    },
+    riddle_correct: {
+      text: "The guardian nods approvingly. 'Correct. You are wise beyond your years. Take the crystal - you have earned it through wit rather than violence.'",
+      image: "✨",
+      choices: [
+        { text: "Take the crystal gratefully", action: "get_crystal", next: "victory" }
+      ]
+    },
+    riddle_wrong: {
+      text: "The guardian shakes its head. 'Incorrect. You must prove yourself in combat!' The guardian attacks!",
+      image: "⚔️",
+      choices: [
+        { text: "Fight!", next: "guardian_fight" }
+      ]
+    },
+    overgrown_path: {
+      text: "The overgrown path is difficult to traverse. Suddenly, you step on a hidden trap! You take 30 damage but manage to free yourself. You find a small pouch with 20 gold.",
+      image: "🕸️",
+      choices: [
+        { text: "Continue forward", action: "trap_damage", next: "rune_path" },
+        { text: "Go back", next: "forest_entrance" }
+      ]
+    },
+    victory: {
+      text: "You return to the hooded figure with the Crystal of Eternity. They smile beneath their hood. 'Excellent work! Here is your reward - 200 gold pieces. You have proven yourself a true hero.' The figure vanishes in a shimmer of light, leaving you to ponder your adventure.",
+      image: "🎉",
+      choices: [
+        { text: "Start a new adventure", action: "reset" }
+      ]
+    }
+  };
+
+  const loadGame = async () => {
+    try {
+      const result = await window.storage.get('adventure-save');
+      if (result) {
+        setGameState(JSON.parse(result.value));
+      } else {
+        addToHistory("=== THE CRYSTAL QUEST ===", "system");
+        addToHistory(scenes.start.text, "story");
+      }
+    } catch (error) {
+      addToHistory("=== THE CRYSTAL QUEST ===", "system");
+      addToHistory(scenes.start.text, "story");
+    }
+  };
+
+  const saveGame = async () => {
+    try {
+      await window.storage.set('adventure-save', JSON.stringify(gameState));
+      addToHistory("Game saved successfully!", "system");
+    } catch (error) {
+      addToHistory("Failed to save game.", "error");
+    }
+  };
+
+  const addToHistory = (text, type = "story") => {
+    setGameState(prev => ({
+      ...prev,
+      history: [...prev.history, { text, type, timestamp: Date.now() }]
+    }));
+  };
+
+  const performAction = (action) => {
+    const actions = {
+      check_pockets: () => {
+        addToHistory("You search your pockets and find 10 gold pieces.", "action");
+        setGameState(prev => ({ ...prev, gold: prev.gold + 10 }));
+      },
+      accept_quest: () => {
+        addToHistory("You accept the quest to find the Crystal of Eternity!", "action");
+        setGameState(prev => ({ ...prev, flags: { ...prev.flags, quest_accepted: true } }));
+      },
+      accept_rat_quest: () => {
+        addToHistory("You accept the rat extermination quest.", "action");
+        setGameState(prev => ({ ...prev, flags: { ...prev.flags, rat_quest: true } }));
+      },
+      buy_potion: () => {
+        if (gameState.gold >= 10) {
+          addToHistory("You purchase a health potion for 10 gold.", "action");
+          setGameState(prev => ({
+            ...prev,
+            gold: prev.gold - 10,
+            inventory: [...prev.inventory, 'health_potion']
+          }));
+        }
+      },
+      use_potion: () => {
+        addToHistory("You drink the health potion and restore 50 HP!", "action");
+        setGameState(prev => ({
+          ...prev,
+          health: Math.min(100, prev.health + 50),
+          inventory: prev.inventory.filter(item => item !== 'health_potion')
+        }));
+      },
+      complete_rat_quest: () => {
+        addToHistory("You receive 40 gold total from the rats and reward!", "action");
+        setGameState(prev => ({ 
+          ...prev, 
+          gold: prev.gold + 40,
+          flags: { ...prev.flags, rats_cleared: true }
+        }));
+      },
+      get_sword: () => {
+        addToHistory("You obtain a rusty sword!", "action");
+        setGameState(prev => ({
+          ...prev,
+          inventory: [...prev.inventory, 'rusty_sword']
+        }));
+      },
+      rest: () => {
+        addToHistory("You rest for a while and recover 20 HP.", "action");
+        setGameState(prev => ({ ...prev, health: Math.min(100, prev.health + 20) }));
+      },
+      buy_armor: () => {
+        if (gameState.gold >= 50) {
+          addToHistory("You purchase sturdy armor for 50 gold.", "action");
+          setGameState(prev => ({
+            ...prev,
+            gold: prev.gold - 50,
+            inventory: [...prev.inventory, 'armor']
+          }));
+        }
+      },
+      buy_weapon: () => {
+        if (gameState.gold >= 75) {
+          addToHistory("You purchase a fine steel sword for 75 gold.", "action");
+          setGameState(prev => ({
+            ...prev,
+            gold: prev.gold - 75,
+            inventory: [...prev.inventory, 'steel_sword']
+          }));
+        }
+      },
+      trap_damage: () => {
+        addToHistory("You take 30 damage from the trap but find 20 gold!", "action");
+        setGameState(prev => ({
+          ...prev,
+          health: Math.max(0, prev.health - 30),
+          gold: prev.gold + 20
+        }));
+      },
+      get_crystal: () => {
+        addToHistory("You obtain the Crystal of Eternity and receive 200 gold!", "action");
+        setGameState(prev => ({
+          ...prev,
+          gold: prev.gold + 200,
+          inventory: [...prev.inventory, 'crystal']
+        }));
+      },
+      reset: () => {
+        setGameState({
+          currentScene: 'start',
+          inventory: [],
+          health: 100,
+          gold: 0,
+          flags: {},
+          history: []
+        });
+        addToHistory("=== THE CRYSTAL QUEST ===", "system");
+        addToHistory(scenes.start.text, "story");
+      }
+    };
+
+    if (actions[action]) {
+      actions[action]();
+    }
+  };
+
+  const checkRequirement = (requirement) => {
+    if (!requirement) return true;
+    
+    if (requirement.startsWith('gold >= ')) {
+      const amount = parseInt(requirement.split('>=')[1]);
+      return gameState.gold >= amount;
+    }
+    
+    if (requirement.startsWith('flag:')) {
+      const flag = requirement.split(':')[1];
+      return gameState.flags[flag];
+    }
+    
+    if (requirement.startsWith('has_item:')) {
+      const item = requirement.split(':')[1];
+      return gameState.inventory.includes(item);
+    }
+    
+    return true;
+  };
+
+  const handleChoice = (choice) => {
+    addToHistory(`> ${choice.text}`, "choice");
+    
+    if (choice.action) {
+      performAction(choice.action);
+    }
+    
+    if (choice.next) {
+      const nextScene = scenes[choice.next];
+      if (nextScene) {
+        setGameState(prev => ({ ...prev, currentScene: choice.next }));
+        addToHistory(nextScene.text, "story");
+      }
+    }
+  };
+
+  const currentScene = scenes[gameState.currentScene];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900 p-4">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-6">
+          <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500 mb-2">
+            The Crystal Quest
+          </h1>
+          <p className="text-gray-400">A Text-Based Adventure</p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          {/* Sidebar - Stats & Inventory */}
+          <div className="lg:col-span-1 space-y-4">
+            {/* Stats */}
+            <div className="bg-gray-800/50 backdrop-blur-lg rounded-xl p-4 border border-gray-700">
+              <h3 className="text-lg font-bold text-amber-400 mb-3 flex items-center gap-2">
+                <Heart size={20} />
+                Character Stats
+              </h3>
+              <div className="space-y-2">
+                <div>
+                  <div className="text-sm text-gray-400">Health</div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 bg-gray-700 rounded-full h-6 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-red-500 to-pink-500 h-full transition-all"
+                        style={{ width: `${gameState.health}%` }}
+                      />
+                    </div>
+                    <span className="text-white font-bold text-sm">{gameState.health}</span>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400">Gold</span>
+                  <span className="text-yellow-400 font-bold">💰 {gameState.gold}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Inventory */}
+            <div className="bg-gray-800/50 backdrop-blur-lg rounded-xl p-4 border border-gray-700">
+              <h3 className="text-lg font-bold text-amber-400 mb-3 flex items-center gap-2">
+                <Package size={20} />
+                Inventory
+              </h3>
+              <div className="space-y-1">
+                {gameState.inventory.length === 0 ? (
+                  <p className="text-gray-500 text-sm">Empty</p>
+                ) : (
+                  gameState.inventory.map((item, idx) => (
+                    <div key={idx} className="bg-gray-700/50 px-3 py-2 rounded text-sm text-gray-300">
+                      {item.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-2">
+              <button
+                onClick={saveGame}
+                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors"
+              >
+                <Save size={18} />
+                Save Game
+              </button>
+              <button
+                onClick={() => performAction('reset')}
+                className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors"
+              >
+                <RotateCcw size={18} />
+                New Game
+              </button>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="lg:col-span-3">
+            {/* Story Display */}
+            <div className="bg-gray-800/50 backdrop-blur-lg rounded-xl p-6 border border-gray-700 mb-4">
+              <div className="h-96 overflow-y-auto space-y-3 mb-6 pr-2">
+                {gameState.history.map((entry, idx) => (
+                  <div key={idx} className={`
+                    ${entry.type === 'story' ? 'text-gray-200 leading-relaxed' : ''}
+                    ${entry.type === 'choice' ? 'text-blue-400 italic' : ''}
+                    ${entry.type === 'action' ? 'text-green-400' : ''}
+                    ${entry.type === 'system' ? 'text-amber-400 font-bold text-center text-xl' : ''}
+                    ${entry.type === 'error' ? 'text-red-400' : ''}
+                  `}>
+                    {entry.text}
+                  </div>
+                ))}
+                <div ref={historyEndRef} />
+              </div>
+
+              {/* Current Scene Icon */}
+              {currentScene && (
+                <div className="text-center mb-6">
+                  <div className="text-6xl mb-4">{currentScene.image}</div>
+                </div>
+              )}
+
+              {/* Choices */}
+              <div className="space-y-2">
+                {currentScene?.choices.map((choice, idx) => {
+                  const canChoose = checkRequirement(choice.requirement);
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => canChoose && handleChoice(choice)}
+                      disabled={!canChoose}
+                      className={`w-full px-6 py-3 rounded-lg font-semibold text-left transition-all ${
+                        canChoose
+                          ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
+                          : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {choice.text}
+                      {!canChoose && choice.requirement && (
+                        <span className="text-xs ml-2">(Requirements not met)</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
