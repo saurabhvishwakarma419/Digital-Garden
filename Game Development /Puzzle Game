@@ -1,1 +1,306 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Shuffle, RotateCcw, Trophy, Clock, Move, Sparkles, Check } from 'lucide-react';
 
+export default function SlidingPuzzleGame() {
+  const [gridSize, setGridSize] = useState(3);
+  const [tiles, setTiles] = useState([]);
+  const [moves, setMoves] = useState(0);
+  const [time, setTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isSolved, setIsSolved] = useState(false);
+  const [bestScores, setBestScores] = useState({ 3: null, 4: null, 5: null });
+  const [showVictory, setShowVictory] = useState(false);
+
+  useEffect(() => {
+    loadBestScores();
+  }, []);
+
+  useEffect(() => {
+    initializePuzzle();
+  }, [gridSize]);
+
+  useEffect(() => {
+    let interval;
+    if (isPlaying && !isSolved) {
+      interval = setInterval(() => {
+        setTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, isSolved]);
+
+  const loadBestScores = async () => {
+    try {
+      const result = await window.storage.get('puzzle-best-scores');
+      if (result) {
+        setBestScores(JSON.parse(result.value));
+      }
+    } catch (error) {
+      console.log('No best scores found');
+    }
+  };
+
+  const saveBestScore = async (size, score) => {
+    const newScores = { ...bestScores, [size]: score };
+    try {
+      await window.storage.set('puzzle-best-scores', JSON.stringify(newScores));
+      setBestScores(newScores);
+    } catch (error) {
+      console.error('Error saving score:', error);
+    }
+  };
+
+  const initializePuzzle = () => {
+    const totalTiles = gridSize * gridSize;
+    const initialTiles = Array.from({ length: totalTiles }, (_, i) => i);
+    setTiles(initialTiles);
+    setMoves(0);
+    setTime(0);
+    setIsPlaying(false);
+    setIsSolved(false);
+    setShowVictory(false);
+  };
+
+  const shufflePuzzle = () => {
+    let shuffled = [...tiles];
+    const emptyIndex = shuffled.indexOf(0);
+    
+    // Perform random valid moves to ensure solvability
+    for (let i = 0; i < 1000; i++) {
+      const validMoves = getValidMoves(shuffled.indexOf(0), shuffled);
+      const randomMove = validMoves[Math.floor(Math.random() * validMoves.length)];
+      const emptyPos = shuffled.indexOf(0);
+      [shuffled[emptyPos], shuffled[randomMove]] = [shuffled[randomMove], shuffled[emptyPos]];
+    }
+    
+    setTiles(shuffled);
+    setMoves(0);
+    setTime(0);
+    setIsPlaying(true);
+    setIsSolved(false);
+    setShowVictory(false);
+  };
+
+  const getValidMoves = (emptyIndex, currentTiles) => {
+    const row = Math.floor(emptyIndex / gridSize);
+    const col = emptyIndex % gridSize;
+    const validMoves = [];
+
+    if (row > 0) validMoves.push(emptyIndex - gridSize); // Up
+    if (row < gridSize - 1) validMoves.push(emptyIndex + gridSize); // Down
+    if (col > 0) validMoves.push(emptyIndex - 1); // Left
+    if (col < gridSize - 1) validMoves.push(emptyIndex + 1); // Right
+
+    return validMoves;
+  };
+
+  const handleTileClick = (index) => {
+    if (!isPlaying || isSolved) return;
+
+    const emptyIndex = tiles.indexOf(0);
+    const validMoves = getValidMoves(emptyIndex, tiles);
+
+    if (validMoves.includes(index)) {
+      const newTiles = [...tiles];
+      [newTiles[emptyIndex], newTiles[index]] = [newTiles[index], newTiles[emptyIndex]];
+      setTiles(newTiles);
+      setMoves(moves + 1);
+
+      // Check if solved
+      const solved = newTiles.every((tile, i) => tile === i);
+      if (solved) {
+        setIsSolved(true);
+        setIsPlaying(false);
+        setShowVictory(true);
+        
+        const currentScore = bestScores[gridSize];
+        const newScore = moves + 1 + Math.floor(time / 10);
+        if (!currentScore || newScore < currentScore) {
+          saveBestScore(gridSize, newScore);
+        }
+      }
+    }
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getTileColor = (value) => {
+    const colors = [
+      'from-purple-500 to-pink-500',
+      'from-blue-500 to-cyan-500',
+      'from-green-500 to-emerald-500',
+      'from-orange-500 to-red-500',
+      'from-yellow-500 to-orange-500',
+      'from-indigo-500 to-purple-500',
+      'from-pink-500 to-rose-500',
+      'from-cyan-500 to-blue-500',
+      'from-teal-500 to-green-500'
+    ];
+    return colors[value % colors.length];
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center p-4">
+      <div className="max-w-2xl w-full">
+        {/* Header */}
+        <div className="text-center mb-6">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <Sparkles className="text-yellow-400" size={32} />
+            <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-pink-400">
+              Slide Puzzle
+            </h1>
+            <Sparkles className="text-yellow-400" size={32} />
+          </div>
+          <p className="text-purple-200">Arrange the tiles in order!</p>
+        </div>
+
+        {/* Stats Bar */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 border border-white/20">
+            <div className="flex items-center gap-2 mb-1">
+              <Move className="text-blue-400" size={20} />
+              <span className="text-purple-300 text-sm">Moves</span>
+            </div>
+            <div className="text-2xl font-bold text-white">{moves}</div>
+          </div>
+          
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 border border-white/20">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock className="text-green-400" size={20} />
+              <span className="text-purple-300 text-sm">Time</span>
+            </div>
+            <div className="text-2xl font-bold text-white">{formatTime(time)}</div>
+          </div>
+          
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 border border-white/20">
+            <div className="flex items-center gap-2 mb-1">
+              <Trophy className="text-yellow-400" size={20} />
+              <span className="text-purple-300 text-sm">Best</span>
+            </div>
+            <div className="text-2xl font-bold text-white">
+              {bestScores[gridSize] || '--'}
+            </div>
+          </div>
+        </div>
+
+        {/* Difficulty Selector */}
+        {!isPlaying && (
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 mb-6 border border-white/20">
+            <label className="block text-white text-center mb-3 font-semibold">Select Difficulty</label>
+            <div className="flex gap-3 justify-center">
+              {[
+                { size: 3, label: 'Easy', desc: '3×3' },
+                { size: 4, label: 'Medium', desc: '4×4' },
+                { size: 5, label: 'Hard', desc: '5×5' }
+              ].map(({ size, label, desc }) => (
+                <button
+                  key={size}
+                  onClick={() => setGridSize(size)}
+                  className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                    gridSize === size
+                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white scale-110 shadow-lg'
+                      : 'bg-white/20 text-purple-200 hover:bg-white/30'
+                  }`}
+                >
+                  <div>{label}</div>
+                  <div className="text-xs opacity-75">{desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Game Board */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 mb-6 border border-white/20 relative">
+          <div 
+            className="grid gap-2 mx-auto"
+            style={{ 
+              gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
+              maxWidth: '500px'
+            }}
+          >
+            {tiles.map((tile, index) => (
+              <button
+                key={index}
+                onClick={() => handleTileClick(index)}
+                disabled={tile === 0}
+                className={`aspect-square rounded-xl font-bold text-2xl transition-all duration-200 ${
+                  tile === 0
+                    ? 'bg-transparent cursor-default'
+                    : `bg-gradient-to-br ${getTileColor(tile)} text-white hover:scale-105 hover:shadow-xl active:scale-95 shadow-lg`
+                }`}
+                style={{
+                  fontSize: gridSize === 5 ? '1.25rem' : '1.5rem'
+                }}
+              >
+                {tile !== 0 && tile}
+              </button>
+            ))}
+          </div>
+
+          {/* Victory Overlay */}
+          {showVictory && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/80 rounded-xl backdrop-blur-sm">
+              <div className="text-center space-y-4 p-8 animate-pulse">
+                <Check className="text-green-400 mx-auto" size={64} />
+                <h2 className="text-4xl font-bold text-white">Puzzle Solved!</h2>
+                <div className="space-y-2">
+                  <p className="text-xl text-green-400">
+                    Moves: <span className="font-bold">{moves}</span>
+                  </p>
+                  <p className="text-xl text-blue-400">
+                    Time: <span className="font-bold">{formatTime(time)}</span>
+                  </p>
+                  {moves + Math.floor(time / 10) === bestScores[gridSize] && (
+                    <p className="text-2xl text-yellow-400 font-bold animate-bounce">
+                      🎉 New Best Score! 🎉
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Control Buttons */}
+        <div className="flex gap-4 justify-center">
+          {!isPlaying ? (
+            <button
+              onClick={shufflePuzzle}
+              className="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-xl font-bold text-xl flex items-center gap-2 transition-all transform hover:scale-105 shadow-lg"
+            >
+              <Shuffle size={24} />
+              Start Game
+            </button>
+          ) : (
+            <button
+              onClick={initializePuzzle}
+              className="px-8 py-4 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-xl font-bold text-xl flex items-center gap-2 transition-all transform hover:scale-105 shadow-lg"
+            >
+              <RotateCcw size={24} />
+              Reset
+            </button>
+          )}
+        </div>
+
+        {/* Instructions */}
+        {!isPlaying && (
+          <div className="mt-6 text-center text-purple-200 text-sm bg-white/5 rounded-xl p-4 border border-white/10">
+            <p className="mb-2">
+              <strong className="text-white">How to Play:</strong>
+            </p>
+            <p>Click on tiles adjacent to the empty space to slide them.</p>
+            <p>Arrange all tiles in numerical order to win!</p>
+            <p className="mt-2 text-xs text-purple-300">
+              Score = Moves + (Time ÷ 10)
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
