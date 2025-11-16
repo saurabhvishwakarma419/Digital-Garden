@@ -1,1 +1,424 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Terminal } from 'lucide-react';
 
+export default function CommandLineInterface() {
+  const [history, setHistory] = useState([]);
+  const [currentInput, setCurrentInput] = useState('');
+  const [commandHistory, setCommandHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [currentDir, setCurrentDir] = useState('/home/user');
+  const [fileSystem, setFileSystem] = useState({
+    '/': {
+      'home': {
+        'user': {
+          'documents': {
+            'readme.txt': 'Welcome to the CLI! Type "help" for available commands.',
+            'notes.txt': 'Remember to check the project deadline.'
+          },
+          'projects': {
+            'website': {
+              'index.html': '<!DOCTYPE html><html><body>Hello World</body></html>',
+              'style.css': 'body { margin: 0; padding: 0; }'
+            }
+          },
+          'downloads': {}
+        }
+      },
+      'etc': {
+        'config.conf': 'system_config=enabled'
+      },
+      'var': {
+        'log': {}
+      }
+    }
+  });
+
+  const inputRef = useRef(null);
+  const terminalRef = useRef(null);
+
+  useEffect(() => {
+    const welcomeMessage = [
+      { type: 'system', content: 'Welcome to Terminal v1.0.0' },
+      { type: 'system', content: 'Type "help" for available commands.' },
+      { type: 'system', content: '' }
+    ];
+    setHistory(welcomeMessage);
+  }, []);
+
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [history]);
+
+  const navigatePath = (path) => {
+    const parts = path.split('/').filter(Boolean);
+    let current = fileSystem['/'];
+    
+    for (const part of parts) {
+      if (current[part] && typeof current[part] === 'object' && !current[part].content) {
+        current = current[part];
+      } else {
+        return null;
+      }
+    }
+    return current;
+  };
+
+  const resolvePath = (path) => {
+    if (path.startsWith('/')) {
+      return path;
+    }
+    
+    const current = currentDir === '/' ? '' : currentDir;
+    if (path === '.') return current || '/';
+    if (path === '..') {
+      const parts = current.split('/').filter(Boolean);
+      parts.pop();
+      return '/' + parts.join('/');
+    }
+    
+    return current + '/' + path;
+  };
+
+  const getFileContent = (path) => {
+    const fullPath = resolvePath(path);
+    const parts = fullPath.split('/').filter(Boolean);
+    let current = fileSystem['/'];
+    
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (current[parts[i]]) {
+        current = current[parts[i]];
+      } else {
+        return null;
+      }
+    }
+    
+    const fileName = parts[parts.length - 1];
+    return current[fileName];
+  };
+
+  const commands = {
+    help: () => [
+      'Available commands:',
+      '  help          - Show this help message',
+      '  clear         - Clear the terminal',
+      '  ls            - List directory contents',
+      '  cd <dir>      - Change directory',
+      '  pwd           - Print working directory',
+      '  cat <file>    - Display file contents',
+      '  echo <text>   - Display text',
+      '  mkdir <dir>   - Create directory',
+      '  touch <file>  - Create empty file',
+      '  rm <file>     - Remove file',
+      '  tree          - Display directory tree',
+      '  whoami        - Display current user',
+      '  date          - Display current date/time',
+      '  history       - Show command history'
+    ],
+
+    clear: () => {
+      setHistory([]);
+      return null;
+    },
+
+    ls: (args) => {
+      const path = args[0] || currentDir;
+      const dir = navigatePath(resolvePath(path));
+      
+      if (!dir) {
+        return [`ls: cannot access '${args[0]}': No such file or directory`];
+      }
+      
+      const items = Object.keys(dir).map(item => {
+        const isDir = typeof dir[item] === 'object' && !dir[item].content;
+        return isDir ? `📁 ${item}` : `📄 ${item}`;
+      });
+      
+      return items.length > 0 ? items : ['(empty directory)'];
+    },
+
+    cd: (args) => {
+      if (!args[0]) {
+        setCurrentDir('/home/user');
+        return null;
+      }
+      
+      const newPath = resolvePath(args[0]);
+      const dir = navigatePath(newPath);
+      
+      if (!dir) {
+        return [`cd: ${args[0]}: No such file or directory`];
+      }
+      
+      setCurrentDir(newPath);
+      return null;
+    },
+
+    pwd: () => [currentDir],
+
+    cat: (args) => {
+      if (!args[0]) {
+        return ['cat: missing file operand'];
+      }
+      
+      const content = getFileContent(args[0]);
+      
+      if (content === null) {
+        return [`cat: ${args[0]}: No such file or directory`];
+      }
+      
+      if (typeof content === 'object') {
+        return [`cat: ${args[0]}: Is a directory`];
+      }
+      
+      return [content];
+    },
+
+    echo: (args) => [args.join(' ')],
+
+    mkdir: (args) => {
+      if (!args[0]) {
+        return ['mkdir: missing operand'];
+      }
+      
+      const fullPath = resolvePath(args[0]);
+      const parts = fullPath.split('/').filter(Boolean);
+      const dirName = parts.pop();
+      
+      let current = fileSystem['/'];
+      for (const part of parts) {
+        if (current[part]) {
+          current = current[part];
+        } else {
+          return [`mkdir: cannot create directory '${args[0]}': No such file or directory`];
+        }
+      }
+      
+      if (current[dirName]) {
+        return [`mkdir: cannot create directory '${args[0]}': File exists`];
+      }
+      
+      const newFS = { ...fileSystem };
+      let newCurrent = newFS['/'];
+      for (const part of parts) {
+        newCurrent = newCurrent[part];
+      }
+      newCurrent[dirName] = {};
+      
+      setFileSystem(newFS);
+      return null;
+    },
+
+    touch: (args) => {
+      if (!args[0]) {
+        return ['touch: missing file operand'];
+      }
+      
+      const fullPath = resolvePath(args[0]);
+      const parts = fullPath.split('/').filter(Boolean);
+      const fileName = parts.pop();
+      
+      let current = fileSystem['/'];
+      for (const part of parts) {
+        if (current[part]) {
+          current = current[part];
+        } else {
+          return [`touch: cannot touch '${args[0]}': No such file or directory`];
+        }
+      }
+      
+      const newFS = { ...fileSystem };
+      let newCurrent = newFS['/'];
+      for (const part of parts) {
+        newCurrent = newCurrent[part];
+      }
+      newCurrent[fileName] = '';
+      
+      setFileSystem(newFS);
+      return null;
+    },
+
+    rm: (args) => {
+      if (!args[0]) {
+        return ['rm: missing operand'];
+      }
+      
+      const fullPath = resolvePath(args[0]);
+      const parts = fullPath.split('/').filter(Boolean);
+      const fileName = parts.pop();
+      
+      let current = fileSystem['/'];
+      for (const part of parts) {
+        if (current[part]) {
+          current = current[part];
+        } else {
+          return [`rm: cannot remove '${args[0]}': No such file or directory`];
+        }
+      }
+      
+      if (!current[fileName]) {
+        return [`rm: cannot remove '${args[0]}': No such file or directory`];
+      }
+      
+      if (typeof current[fileName] === 'object' && Object.keys(current[fileName]).length > 0) {
+        return [`rm: cannot remove '${args[0]}': Is a directory`];
+      }
+      
+      const newFS = { ...fileSystem };
+      let newCurrent = newFS['/'];
+      for (const part of parts) {
+        newCurrent = newCurrent[part];
+      }
+      delete newCurrent[fileName];
+      
+      setFileSystem(newFS);
+      return null;
+    },
+
+    tree: () => {
+      const buildTree = (obj, prefix = '', isLast = true) => {
+        const entries = Object.entries(obj);
+        let result = [];
+        
+        entries.forEach(([key, value], index) => {
+          const isLastItem = index === entries.length - 1;
+          const connector = isLastItem ? '└── ' : '├── ';
+          const isDir = typeof value === 'object' && !value.content;
+          const icon = isDir ? '📁' : '📄';
+          
+          result.push(prefix + connector + icon + ' ' + key);
+          
+          if (isDir && Object.keys(value).length > 0) {
+            const newPrefix = prefix + (isLastItem ? '    ' : '│   ');
+            result = result.concat(buildTree(value, newPrefix, isLastItem));
+          }
+        });
+        
+        return result;
+      };
+      
+      const dir = navigatePath(currentDir);
+      return [currentDir, ...buildTree(dir)];
+    },
+
+    whoami: () => ['user'],
+
+    date: () => [new Date().toString()],
+
+    history: () => commandHistory.map((cmd, i) => `${i + 1}  ${cmd}`)
+  };
+
+  const executeCommand = (input) => {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+
+    const newHistory = [...commandHistory, trimmed];
+    setCommandHistory(newHistory);
+    setHistoryIndex(-1);
+
+    const [cmd, ...args] = trimmed.split(' ');
+    
+    setHistory(prev => [...prev, { type: 'input', content: `${currentDir} $ ${trimmed}` }]);
+
+    if (commands[cmd]) {
+      const output = commands[cmd](args);
+      if (output) {
+        output.forEach(line => {
+          setHistory(prev => [...prev, { type: 'output', content: line }]);
+        });
+      }
+    } else {
+      setHistory(prev => [...prev, { type: 'error', content: `Command not found: ${cmd}` }]);
+    }
+
+    setCurrentInput('');
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      executeCommand(currentInput);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (commandHistory.length > 0) {
+        const newIndex = historyIndex === -1 ? commandHistory.length - 1 : Math.max(0, historyIndex - 1);
+        setHistoryIndex(newIndex);
+        setCurrentInput(commandHistory[newIndex]);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIndex !== -1) {
+        const newIndex = historyIndex + 1;
+        if (newIndex >= commandHistory.length) {
+          setHistoryIndex(-1);
+          setCurrentInput('');
+        } else {
+          setHistoryIndex(newIndex);
+          setCurrentInput(commandHistory[newIndex]);
+        }
+      }
+    } else if (e.key === 'l' && e.ctrlKey) {
+      e.preventDefault();
+      commands.clear();
+    } else if (e.key === 'c' && e.ctrlKey) {
+      e.preventDefault();
+      setCurrentInput('');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-900 p-4 flex items-center justify-center">
+      <div className="w-full max-w-5xl">
+        <div className="bg-gray-800 rounded-t-lg px-4 py-2 flex items-center gap-2 border-b border-gray-700">
+          <div className="flex gap-2">
+            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+          </div>
+          <div className="flex items-center gap-2 ml-4 text-gray-400">
+            <Terminal size={16} />
+            <span className="text-sm font-mono">terminal</span>
+          </div>
+        </div>
+        
+        <div
+          ref={terminalRef}
+          className="bg-black rounded-b-lg p-6 h-[600px] overflow-y-auto font-mono text-sm"
+          onClick={() => inputRef.current?.focus()}
+        >
+          {history.map((item, index) => (
+            <div key={index} className="mb-1">
+              {item.type === 'input' && (
+                <div className="text-green-400">{item.content}</div>
+              )}
+              {item.type === 'output' && (
+                <div className="text-gray-300">{item.content}</div>
+              )}
+              {item.type === 'error' && (
+                <div className="text-red-400">{item.content}</div>
+              )}
+              {item.type === 'system' && (
+                <div className="text-cyan-400">{item.content}</div>
+              )}
+            </div>
+          ))}
+          
+          <div className="flex items-center">
+            <span className="text-green-400 mr-2">{currentDir} $</span>
+            <input
+              ref={inputRef}
+              type="text"
+              value={currentInput}
+              onChange={(e) => setCurrentInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="flex-1 bg-transparent text-white outline-none"
+              autoFocus
+              spellCheck={false}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
